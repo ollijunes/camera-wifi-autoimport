@@ -60,4 +60,5 @@ jobs:
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
           echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
           tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+          python3 scripts/check_public_tree.py
           "$RUNNER_TEMP/gitleaks" git --redact --no-banner --exit-code 1 .

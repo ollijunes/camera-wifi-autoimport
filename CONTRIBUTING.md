@@ -9,6 +9,7 @@ uv run python -m pytest --cov=camera_import --cov-fail-under=85
 uv run ruff check .
 uv run ruff format --check .
 gitleaks git --redact --no-banner .
+python3 scripts/check_public_tree.py
 ```
 
 Tests must use temporary directories, synthetic credentials and generated data.

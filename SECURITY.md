@@ -56,6 +56,12 @@ history, camera photos, state databases, API responses or production settings
 belong here. Gitleaks scans the Git history in CI; automated scanning complements
 manual review and does not prove the absence of every possible secret.
 
+An additional privacy checker scans every reachable Git snapshot and commit
+metadata for private LAN/carrier-grade NAT addresses, personal home-directory
+paths, and private runtime/photo files. Synthetic canaries verify its patterns.
+Examples use loopback or reserved example hostnames. Do not add scanner
+allowlists merely to publish a real configuration or photograph.
+
 Before publishing a branch, inspect staged files, commit author metadata,
 commit messages and test output. Enable GitHub secret scanning and push
 protection on forks where available.
