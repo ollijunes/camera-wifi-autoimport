@@ -1,0 +1,17 @@
+# Copy to a private location OUTSIDE this checkout and edit for your installation.
+immich_url = "http://127.0.0.1:2283"
+api_key_file = "/volume1/docker/camera-wifi-autoimport-private/immich.key"
+inbox = "/volume1/camera-inbox"
+state_dir = "/volume1/docker/camera-wifi-autoimport-private/state"
+album = "Camera uploads"
+
+# Two observations at least this far apart, with unchanged size and timestamps.
+settle_seconds = 60
+max_file_mb = 100
+timeout_seconds = 120
+
+# HTTPS is verified. Only localhost HTTP is allowed without an explicit opt-in.
+allow_insecure_http = false
+
+# Optional: select an existing album by UUID (also permits a shared album).
+# album_id = "00000000-0000-4000-8000-000000000001"
