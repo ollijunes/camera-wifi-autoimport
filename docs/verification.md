@@ -14,6 +14,13 @@ a release on physical hardware.
 - New tests cover one-time reporting of permanent rejections, retry of trashed
   duplicates, an unreadable inbox subfolder, and verification plus upgrade of a
   0.1.0 state database.
+- 16 October 2026, Synology DS1522+ (DSM 7.3.2, bundled Python 3.8 untouched,
+  uv-managed Python 3.12.15, Immich 3.3.1 on the same NAS): a JPEG already in
+  Immich was copied into a fresh inbox. Dry run reported `waiting` then
+  `would_duplicate`; the real run reported `duplicate`, created the configured
+  album with one asset, left the source file in place, and the next run
+  reported `recorded`. The `created` path with a new photo from the camera has
+  not been exercised yet.
 - The JPEG start/end marker check was compared with the private workflow that
   imported about 1,300 Sony A7 IV JPEGs using the same check; no Sony file was
   rejected by it.

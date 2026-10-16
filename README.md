@@ -98,7 +98,7 @@ The command makes one pass and exits; it does not run a background service.
 | Component | Status |
 | --- | --- |
 | Sony A7 IV → Synology FTP inbox → Immich | Used with the original private workflow that this project replaces |
-| This public importer | Automated unit and local HTTP protocol tests; not yet validated end to end on a physical camera/NAS |
+| This public importer | Automated unit and local HTTP protocol tests. Duplicate-check, album creation and retry state verified on a Synology DS1522+ (DSM 7.3.2, Python 3.12, Immich 3.3.1); a fresh camera upload through the whole path is still pending |
 | Immich API | Requests checked against the published **v3.3.1** OpenAPI schema; no live Immich instance is started by the test suite. Immich 2.x and older require `deviceAssetId`/`deviceId` on upload and answer HTTP 400 |
 | Nikon / Canon / other cameras | Folder-based ingestion is brand independent; model-specific FTP support must be checked, and these cameras have not been tested here |
 | JPEG | Supported; marker checks catch common interrupted transfers, not every form of image corruption |
