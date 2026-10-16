@@ -6,6 +6,7 @@ import contextlib
 import datetime as dt
 import fcntl
 import hashlib
+import hmac
 import http.client
 import json
 import os
@@ -21,12 +22,18 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 MAX_RESPONSE = 2 * 1024 * 1024
+DONE = 1
+REJECTED = 2
 
 
 class ImportErrorSafe(Exception):
     """An error whose message contains no server or user-supplied values."""
+
+
+class PermanentReject(ImportErrorSafe):
+    """A verdict that cannot change until the source file itself changes."""
 
 
 def fingerprint(st):
@@ -185,7 +192,7 @@ class Immich:
                     "Duplicate is trashed or trash status is unknown; review in Immich."
                 )
             return valid_id(result.get("assetId"))
-        raise ImportErrorSafe("Immich rejected the file; source retained for review.")
+        raise PermanentReject("Immich rejected the file; source retained for review.")
 
     def upload(self, snapshot, name, timestamp):
         boundary = uuid.uuid4().hex
@@ -279,24 +286,29 @@ def state_db(cfg, key):
         db = sqlite3.connect(db_path)
         try:
             db.execute("CREATE TABLE IF NOT EXISTS meta (value TEXT)")
-            identity = hashlib.sha256(
-                json.dumps(
-                    [
-                        cfg["immich_url"],
-                        str(cfg["inbox"]),
-                        cfg["album"],
-                        cfg.get("album_id"),
-                        key,
-                    ]
-                ).encode()
-            ).hexdigest()
+            material = json.dumps(
+                [cfg["immich_url"], str(cfg["inbox"]), cfg["album"], cfg.get("album_id"), key]
+            ).encode()
             old = db.execute("SELECT value FROM meta").fetchone()
-            if old and old[0] != identity:
-                raise ImportErrorSafe(
-                    "State belongs to another configuration/key; use a new state_dir."
-                )
-            if not old:
-                db.execute("INSERT INTO meta VALUES (?)", (identity,))
+            if old is None:
+                salt = os.urandom(16).hex()
+                db.execute("INSERT INTO meta VALUES (?)", (f"{salt}${identity(salt, material)}",))
+            else:
+                salt, _, expected = old[0].partition("$")
+                if not expected:
+                    # 0.1.0 stored an unsalted digest; verify it once, then store a salted one.
+                    expected, salt = salt, os.urandom(16).hex()
+                    matched = hmac.compare_digest(hashlib.sha256(material).hexdigest(), expected)
+                    if matched:
+                        db.execute(
+                            "UPDATE meta SET value=?", (f"{salt}${identity(salt, material)}",)
+                        )
+                else:
+                    matched = hmac.compare_digest(identity(salt, material), expected)
+                if not matched:
+                    raise ImportErrorSafe(
+                        "State belongs to another configuration/key; use a new state_dir."
+                    )
             db.execute(
                 "CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, "
                 "fingerprint TEXT, seen REAL, done INTEGER DEFAULT 0)"
@@ -307,9 +319,15 @@ def state_db(cfg, key):
             db.close()
 
 
-def candidates(inbox):
+def identity(salt, material):
+    return hmac.new(bytes.fromhex(salt), material, "sha256").hexdigest()
+
+
+def candidates(inbox, on_error=None):
     def walk_error(_):
-        raise ImportErrorSafe("Cannot read part of the inbox; check folder permissions.")
+        if on_error is None:
+            raise ImportErrorSafe("Cannot read part of the inbox; check folder permissions.")
+        on_error()
 
     for root, dirs, files, fd in os.fwalk(inbox, follow_symlinks=False, onerror=walk_error):
         dirs[:] = sorted(d for d in dirs if not d.startswith((".", "@", "#")))
@@ -336,43 +354,60 @@ def import_file(cfg, db, client, relative, name, dir_fd, dry_run, now):
             db.execute("INSERT OR REPLACE INTO files VALUES (?, ?, ?, 0)", (relative, fp, now))
             db.commit()
             return "waiting"
+        if row[2] == REJECTED:
+            return "rejected"
         if row[2]:
             return "recorded"
         if now - row[1] < cfg["settle_seconds"]:
             return "waiting"
-        if before.st_size < 4 or before.st_size > cfg["max_file_mb"] * 1024 * 1024:
-            raise ImportErrorSafe("JPEG size is outside the configured limit; source retained.")
-        with tempfile.TemporaryFile(dir=cfg["state_dir"]) as snapshot:
-            digest = hashlib.sha1(usedforsecurity=False)
-            remaining = before.st_size
-            while remaining:
-                chunk = source.read(min(1024 * 1024, remaining))
-                if not chunk:
-                    return "waiting"
-                snapshot.write(chunk)
-                digest.update(chunk)
-                remaining -= len(chunk)
-            if source.read(1) or fingerprint(os.fstat(source.fileno())) != fp:
-                return "waiting"
-            snapshot.seek(0)
-            start = snapshot.read(2)
-            snapshot.seek(-2, os.SEEK_END)
-            if start != b"\xff\xd8" or snapshot.read(2) != b"\xff\xd9":
-                raise ImportErrorSafe(
-                    "Incomplete JPEG markers; source retained for retransmission."
-                )
-            asset_id = client.check(digest.hexdigest())
-            if dry_run:
-                return "would_duplicate" if asset_id else "would_upload"
-            # Resolve ambiguity before accepting new photos into the destination.
-            client.ensure_album()
-            status = "duplicate"
-            if asset_id is None:
-                asset_id, status = client.upload(snapshot, name, before.st_mtime)
-            client.add_to_album(asset_id)
-        db.execute("UPDATE files SET done=1 WHERE path=? AND fingerprint=?", (relative, fp))
+        try:
+            status = transfer(cfg, client, source, before, fp, name, dry_run)
+        except PermanentReject:
+            # Report once; the verdict is rechecked only when the file's fingerprint changes.
+            db.execute(
+                "UPDATE files SET done=? WHERE path=? AND fingerprint=?", (REJECTED, relative, fp)
+            )
+            db.commit()
+            raise
+        if status in ("waiting", "would_upload", "would_duplicate"):
+            return status
+        db.execute("UPDATE files SET done=? WHERE path=? AND fingerprint=?", (DONE, relative, fp))
         db.commit()
         return status
+
+
+def transfer(cfg, client, source, before, fp, name, dry_run):
+    if before.st_size < 4 or before.st_size > cfg["max_file_mb"] * 1024 * 1024:
+        raise PermanentReject("JPEG size is outside the configured limit; source retained.")
+    with tempfile.TemporaryFile(dir=cfg["state_dir"]) as snapshot:
+        digest = hashlib.sha1(usedforsecurity=False)
+        remaining = before.st_size
+        while remaining:
+            chunk = source.read(min(1024 * 1024, remaining))
+            if not chunk:
+                return "waiting"
+            snapshot.write(chunk)
+            digest.update(chunk)
+            remaining -= len(chunk)
+        if source.read(1) or fingerprint(os.fstat(source.fileno())) != fp:
+            return "waiting"
+        snapshot.seek(0)
+        start = snapshot.read(2)
+        snapshot.seek(-2, os.SEEK_END)
+        if start != b"\xff\xd8" or snapshot.read(2) != b"\xff\xd9":
+            raise PermanentReject(
+                "Incomplete JPEG markers; source retained, rechecked only if the file changes."
+            )
+        asset_id = client.check(digest.hexdigest())
+        if dry_run:
+            return "would_duplicate" if asset_id else "would_upload"
+        # Resolve ambiguity before accepting new photos into the destination.
+        client.ensure_album()
+        status = "duplicate"
+        if asset_id is None:
+            asset_id, status = client.upload(snapshot, name, before.st_mtime)
+        client.add_to_album(asset_id)
+    return status
 
 
 def run(cfg, dry_run=False):
@@ -383,6 +418,7 @@ def run(cfg, dry_run=False):
             "created",
             "duplicate",
             "recorded",
+            "rejected",
             "waiting",
             "skipped",
             "would_upload",
@@ -391,8 +427,9 @@ def run(cfg, dry_run=False):
         ),
         0,
     )
+    unreadable = []
     with state_db(cfg, key) as db:
-        for relative, name, fd in candidates(cfg["inbox"]):
+        for relative, name, fd in candidates(cfg["inbox"], lambda: unreadable.append(1)):
             try:
                 status = import_file(cfg, db, client, relative, name, fd, dry_run, time.time())
                 counts[status] += 1
@@ -402,6 +439,12 @@ def run(cfg, dry_run=False):
             except (OSError, ValueError, sqlite3.Error):
                 counts["failed"] += 1
                 print("error: local file operation failed; source retained.", file=sys.stderr)
+    if unreadable:
+        counts["failed"] += len(unreadable)
+        print(
+            f"error: {len(unreadable)} inbox folder(s) unreadable; check folder permissions.",
+            file=sys.stderr,
+        )
     print(" ".join(f"{name}={count}" for name, count in counts.items()))
     return 1 if counts["failed"] else 0
 

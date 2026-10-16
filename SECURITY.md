@@ -19,7 +19,7 @@ affected version. Security fixes target the latest release.
 - Logs use counts and fixed errors. The script does not print API keys, image
   names, configured server URLs, raw server responses or exception tracebacks
   for expected operational errors. Do not run Python with debug HTTP tracing.
-- State holds private filenames and a hash binding the destination and key.
+- State holds private filenames and a salted HMAC binding the destination and key.
   Temporary files hold JPEG bytes. Both belong in a local, mode-700 directory
   that the FTP user cannot access. Disk encryption/backups are the operator's responsibility.
 - Filenames are treated as untrusted input. Multipart filenames are sanitized,
