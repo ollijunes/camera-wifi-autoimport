@@ -1,5 +1,7 @@
 # camera-wifi-autoimport
 
+![camera-wifi-autoimport: camera JPEGs sent over Wi-Fi to your own Immich library.](docs/banner.png)
+
 [![CI](https://github.com/ollijunes/camera-wifi-autoimport/actions/workflows/ci.yml/badge.svg)](https://github.com/ollijunes/camera-wifi-autoimport/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
