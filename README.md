@@ -21,6 +21,9 @@ or a separate tool that saves complete JPEGs to that folder.
 [Troubleshooting](docs/troubleshooting.md) · [Security](SECURITY.md) ·
 [Contributing](CONTRIBUTING.md)
 
+Read the project story: [English](https://ollijunes.com/camera-wifi-autoimport-sony-immich/)
+· [Suomeksi](https://ollijunes.com/fi/kameran-kuvat-wifi-immich/).
+
 ```mermaid
 flowchart LR
     Camera[Camera on home Wi-Fi] -->|FTP / FTPS| Inbox[NAS inbox]

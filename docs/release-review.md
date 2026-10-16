@@ -1,8 +1,14 @@
 # Release preparation review — 2026-10-15
 
-Publication is on hold. The repository is private pending a later publication
-decision. GitHub reported `PRIVATE`, and an unauthenticated request returned
-HTTP 404. Changing visibility cannot retract copies made while it was public.
+The review below records the private preparation stage on 15 October.
+Publication was authorized on 16 October, with the physical camera/NAS test
+still explicitly pending. The public README documents that limitation.
+
+The 16 October publication checks passed locally: 53 tests, 92.57% statement
+coverage, Ruff lint/format checks, and secret/privacy scans. The Affinity banner
+and icon were rendered and inspected, including their PNG metadata and decoded
+colour profiles. The private-repository CI attempts did not start because of
+an account billing/spending restriction, so those runs are not test results.
 
 ## Reviewed implementation
 
@@ -52,18 +58,16 @@ protection are therefore not counted as verified protections for this private
 phase. The repository's Gitleaks and privacy-checker CI jobs remain configured;
 their execution also depends on Actions availability for the private repository.
 
-## Outstanding work before publication
+## Review follow-up
 
 1. Exercise this rewrite with a real camera, receiver and Immich instance using
    the [whole-path verification procedure](synology.md#6-verify-the-whole-path).
    Record duplicate handling, album membership, original image retention and
    Immich processing. The existing private workflow is not evidence that this
    rewrite passes those checks.
-2. Finish the planned Affinity artwork and inspect the exported files and their
-   metadata before adding them. The retry still timed out during MCP
-   initialization; no banner has been rendered or added to this repository.
-3. Review the final diff, run the relevant tests and both privacy scans, inspect
-   publication metadata, and confirm the maintainer's decision to publish.
+2. Artwork and publication review were completed on 16 October. The banner and
+   icon in `docs/` contain only generated vector/text artwork. Native design
+   documents and private environment data are not included.
 
 No production installation or camera/NAS configuration was changed by this
-review. The repository must remain private until that later decision.
+review. Publication does not change the scope of the hardware verification.
