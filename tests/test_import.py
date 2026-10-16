@@ -2,6 +2,7 @@ import contextlib
 import hashlib
 import json
 import os
+import sqlite3
 import threading
 from email import policy
 from email.parser import BytesParser
@@ -486,3 +487,106 @@ def test_cli_smoke_uses_no_network_for_empty_inbox(cfg, tmp_path, capsys):
     with patch.object(app.Immich, "request", side_effect=AssertionError("network")):
         assert app.main(["--config", str(path), "--dry-run"]) == 0
     assert "failed=0" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "data",
+    [b"\xff\xd8unfinished", b"\xff\xd8" + b"x" * 1024 * 1024 + b"\xff\xd9"],
+)
+def test_permanent_reject_reported_once_until_file_changes(cfg, data, capsys):
+    photo = cfg["inbox"] / "broken.jpg"
+    photo.write_bytes(data)
+    client = FakeImmich()
+    invoke(cfg, client, 1000)
+    assert invoke(cfg, client, 1060) == 1
+    assert "error:" in capsys.readouterr().err
+    assert invoke(cfg, client, 1120) == 0
+    out = capsys.readouterr()
+    assert "rejected=1" in out.out and "failed=0" in out.out and out.err == ""
+    assert photo.read_bytes() == data and not client.uploads
+    photo.write_bytes(JPEG)
+    invoke(cfg, client, 1180)
+    assert invoke(cfg, client, 1240) == 0
+    assert client.uploads == [JPEG]
+
+
+def test_immich_unsupported_format_is_recorded_as_rejected(cfg, capsys):
+    (cfg["inbox"] / "odd.jpg").write_bytes(JPEG)
+
+    class Rejecting(FakeImmich):
+        def check(self, digest):
+            raise app.PermanentReject("Immich rejected the file; source retained for review.")
+
+    client = Rejecting()
+    invoke(cfg, client, 1000)
+    assert invoke(cfg, client, 1060) == 1
+    assert invoke(cfg, client, 1120) == 0
+    assert "rejected=1" in capsys.readouterr().out
+
+
+def test_trashed_duplicate_is_retried_not_rejected(cfg, capsys):
+    (cfg["inbox"] / "trashed.jpg").write_bytes(JPEG)
+
+    class Trashed(FakeImmich):
+        def check(self, digest):
+            raise app.ImportErrorSafe("Duplicate is trashed; review in Immich.")
+
+    client = Trashed()
+    invoke(cfg, client, 1000)
+    assert invoke(cfg, client, 1060) == 1
+    assert invoke(cfg, client, 1120) == 1
+    assert "rejected=0" in capsys.readouterr().out
+
+
+@pytest.mark.skipif(os.getuid() == 0, reason="root ignores directory permissions")
+def test_unreadable_subfolder_does_not_abort_pass(cfg, capsys):
+    (cfg["inbox"] / "ok.jpg").write_bytes(JPEG)
+    locked = cfg["inbox"] / "locked"
+    locked.mkdir()
+    (locked / "hidden.jpg").write_bytes(JPEG)
+    locked.chmod(0o000)
+    try:
+        client = FakeImmich()
+        assert invoke(cfg, client, 1000) == 1
+        assert invoke(cfg, client, 1060) == 1
+        out = capsys.readouterr()
+        assert "created=1" in out.out and "failed=1" in out.out
+        assert "unreadable" in out.err
+        assert client.uploads == [JPEG]
+    finally:
+        locked.chmod(0o700)
+
+
+def test_legacy_unsalted_state_is_verified_and_upgraded(cfg):
+    legacy = hashlib.sha256(
+        json.dumps(
+            [cfg["immich_url"], str(cfg["inbox"]), cfg["album"], None, SYNTHETIC_KEY]
+        ).encode()
+    ).hexdigest()
+    db_path = cfg["state_dir"] / "state.sqlite3"
+    with contextlib.closing(sqlite3.connect(db_path)) as db:
+        db.execute("CREATE TABLE meta (value TEXT)")
+        db.execute("INSERT INTO meta VALUES (?)", (legacy,))
+        db.commit()
+    with app.state_db(cfg, SYNTHETIC_KEY) as db:
+        value = db.execute("SELECT value FROM meta").fetchone()[0]
+    salt, _, digest = value.partition("$")
+    assert len(salt) == 32 and len(digest) == 64 and digest != legacy
+    with app.state_db(cfg, SYNTHETIC_KEY):
+        pass
+    with pytest.raises(app.ImportErrorSafe, match="another configuration"):
+        with app.state_db({**cfg, "album": "Other"}, SYNTHETIC_KEY):
+            pass
+
+
+def test_identity_differs_per_salt_and_state_dir(cfg, tmp_path):
+    with app.state_db(cfg, SYNTHETIC_KEY) as db:
+        first = db.execute("SELECT value FROM meta").fetchone()[0]
+    other = tmp_path / "state2"
+    other.mkdir(mode=0o700)
+    with app.state_db({**cfg, "state_dir": other}, SYNTHETIC_KEY) as db:
+        second = db.execute("SELECT value FROM meta").fetchone()[0]
+    assert first != second
+    with pytest.raises(app.ImportErrorSafe, match="another configuration"):
+        with app.state_db(cfg, "different-test-token"):
+            pass

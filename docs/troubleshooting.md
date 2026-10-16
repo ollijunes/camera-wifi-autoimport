@@ -5,7 +5,10 @@
 | Nothing reaches the inbox | Camera Wi-Fi connection, FTP password, FTP-root-relative folder, passive ports, NAS firewall and camera power state |
 | Everything is `waiting` on the first run | Expected: at least two unchanged observations separated by `settle_seconds` are required |
 | A file keeps waiting | Transfer may still be writing, another process may change metadata, or the system clock moved backwards |
-| Incomplete JPEG markers | Keep the source and retransmit from the card; a non-JPEG renamed to `.jpg` is not supported |
+| Incomplete JPEG markers | Keep the source and retransmit from the card; a non-JPEG renamed to `.jpg` is not supported. The file is counted as `rejected` until its content changes |
+| `rejected` count stays above zero | Expected after a size, marker or unsupported-format verdict; the file is not rechecked until it changes. Remove or replace it when you have reviewed it |
+| Inbox folder(s) unreadable | Other files were processed; fix permissions on the named subfolder and the next run covers it |
+| HTTP 400 on upload with Immich 2.x or older | Upgrade Immich to 3.0 or later; older servers require `deviceAssetId`/`deviceId` |
 | Key permission error | Run as the key's owner; set mode `600` or `400`, and keep it outside the inbox |
 | State permission error | The state directory must be owned by the runner and mode `700`; keep it on a local filesystem |
 | HTTP 401/403 | Verify the API key and its four permissions; use the account that owns the intended library |
