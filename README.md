@@ -43,12 +43,15 @@ flowchart LR
 - Adds both new uploads and existing duplicates to your chosen album.
 - Retries unfinished work on the next scheduled run, including album failures
   after a successful upload.
+- Reports a file that can never pass (over the size limit, missing JPEG markers,
+  rejected by Immich as unsupported) once, then counts it as `rejected` until the
+  file itself changes.
 - Keeps source files in place. There is no delete, move, purge or camera-card
   cleanup command.
 
 It is a single Python script with no runtime dependencies outside the standard
-library. Python 3.11 or later and a POSIX host (Linux, Synology or macOS) are
-required. Windows is not supported by this release.
+library. Python 3.11 or later, **Immich 3.0 or later** and a POSIX host (Linux,
+Synology or macOS) are required. Windows is not supported by this release.
 
 ## Quick start
 
@@ -96,7 +99,7 @@ The command makes one pass and exits; it does not run a background service.
 | --- | --- |
 | Sony A7 IV → Synology FTP inbox → Immich | Used with the original private workflow that this project replaces |
 | This public importer | Automated unit and local HTTP protocol tests; not yet validated end to end on a physical camera/NAS |
-| Immich API | Requests checked against the published **v3.3.1** OpenAPI schema; no live Immich instance is started by the test suite |
+| Immich API | Requests checked against the published **v3.3.1** OpenAPI schema; no live Immich instance is started by the test suite. Immich 2.x and older require `deviceAssetId`/`deviceId` on upload and answer HTTP 400 |
 | Nikon / Canon / other cameras | Folder-based ingestion is brand independent; model-specific FTP support must be checked, and these cameras have not been tested here |
 | JPEG | Supported; marker checks catch common interrupted transfers, not every form of image corruption |
 | RAW, HEIF, video, sidecars | Left untouched; not imported in this release |
@@ -113,7 +116,14 @@ checks the checksum again and can finish using the existing asset.
 
 Duplicate means the same file bytes, using Immich's checksum. It does not mean
 similar-looking frames, resized exports, or RAW/JPEG pairs. Files already in
-Immich's trash are held for manual review, not automatically restored.
+Immich's trash are held for manual review, not automatically restored; they are
+retried on every run because the trash state can change in Immich.
+
+A file that fails a local check (size limit, JPEG markers) or that Immich rejects
+as unsupported is reported once with exit code `1`. Later runs count it as
+`rejected` and exit `0`, so a scheduler alert fires once, not every two minutes.
+Replace or retransmit the file to trigger a fresh check; the importer never
+deletes it for you.
 
 State is bound to the server URL, inbox, album selection and API key. If you
 change one of these, choose a new empty `state_dir`. The next runs recheck the
