@@ -1,8 +1,8 @@
 # T1 README: move the blog post link to the top; keep ledger tooling out of language stats
 
-- Status: doing
+- Status: done
 - Lane: docs/blog-link-language-20261020
-- Evidence: —
+- Evidence: `python3 scripts/check_public_tree.py` → 16 canaries passed, 0 findings; both blog URLs return 200; the story line appears once in README.md. Language change shows on GitHub after merge.
 
 ## Plan
 
