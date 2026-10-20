@@ -6,6 +6,8 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
+Read the project story: [English](https://ollijunes.com/camera-wifi-autoimport-sony-immich/) · [Suomeksi](https://ollijunes.com/fi/kameran-kuvat-wifi-immich/)
+
 **Get your camera's photos into Immich over your home Wi-Fi.**
 
 Your camera sends JPEGs to a folder on your NAS. This script imports them into
@@ -20,9 +22,6 @@ or a separate tool that saves complete JPEGs to that folder.
 [Synology setup](docs/synology.md) · [Camera compatibility](docs/cameras.md) ·
 [Troubleshooting](docs/troubleshooting.md) · [Security](SECURITY.md) ·
 [Contributing](CONTRIBUTING.md)
-
-Read the project story: [English](https://ollijunes.com/camera-wifi-autoimport-sony-immich/)
-· [Suomeksi](https://ollijunes.com/fi/kameran-kuvat-wifi-immich/).
 
 ```mermaid
 flowchart LR
